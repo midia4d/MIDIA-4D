@@ -38,11 +38,11 @@ export default function AdminPanel() {
             if (session) {
                 const { data: profile } = await supabase
                     .from('profiles')
-                    .select('role, igreja_id')
+                    .select('role, igreja_id, is_super_admin')
                     .eq('id', session.user.id)
                     .single();
 
-                if (profile?.role !== 'admin') {
+                if (profile?.role !== 'admin' && !profile?.is_super_admin) {
                     navigate('/');
                     return;
                 }

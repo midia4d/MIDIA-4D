@@ -212,7 +212,7 @@ export default function AppLayout() {
                     );
                 })}
 
-                {user?.role === 'admin' && (
+                {(user?.role === 'admin' || user?.is_super_admin) && (
                     <div className="pt-4 mt-4 border-t border-border">
                         <div className="text-[10px] uppercase font-black text-muted-foreground tracking-widest px-3 mb-2">Administração</div>
                         <NavLink
