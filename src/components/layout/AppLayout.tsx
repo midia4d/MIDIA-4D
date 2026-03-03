@@ -1,5 +1,5 @@
 import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, CheckSquare, Clapperboard, GraduationCap, Trophy, BarChart, LogOut, CalendarDays, User, Loader2, ShieldAlert, Menu, X, Bell, Info, AlertTriangle, CheckCircle } from 'lucide-react';
+import { LayoutDashboard, Users, CheckSquare, Clapperboard, GraduationCap, Trophy, BarChart, LogOut, CalendarDays, User, Loader2, ShieldAlert, Menu, X, Bell, Info, AlertTriangle, CheckCircle, ShieldCheck } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { supabase } from '../../lib/supabase';
 import { useEffect, useState } from 'react';
@@ -56,7 +56,8 @@ export default function AppLayout() {
                 .single();
 
             if (profile && mounted) {
-                setUser(profile);
+                // Preservar também o role do auth para fallback se quiser
+                setUser({ ...data.session.user, ...profile });
             }
         };
 
@@ -232,6 +233,29 @@ export default function AppLayout() {
                                     Painel Admin
                                 </>
                             )}
+                        </NavLink>
+                    </div>
+                )}
+
+                {user?.is_super_admin && (
+                    <div className="pt-4 mt-4 border-t border-red-500/20">
+                        <div className="text-[10px] uppercase font-black text-red-500 tracking-widest px-3 mb-2 flex items-center gap-1">
+                            <ShieldCheck size={12} /> Master
+                        </div>
+                        <NavLink
+                            to="/superadmin"
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className={({ isActive }) =>
+                                cn(
+                                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-bold w-full",
+                                    isActive
+                                        ? "bg-red-600 text-white shadow-lg shadow-red-600/20"
+                                        : "text-red-500 bg-red-500/10 hover:bg-red-500/20"
+                                )
+                            }
+                        >
+                            <ShieldCheck size={18} className="group-[.active]:text-red-200" />
+                            SaaS Global
                         </NavLink>
                     </div>
                 )}

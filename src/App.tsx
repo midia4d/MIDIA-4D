@@ -11,6 +11,7 @@ import Academia from './pages/Academia';
 import Ranking from './pages/Ranking';
 import Impacto from './pages/Impacto';
 import AdminPanel from './pages/AdminPanel';
+import SuperAdmin from './pages/SuperAdmin';
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
           <Route path="ranking" element={<Ranking />} />
           <Route path="impacto" element={<Impacto />} />
           <Route path="admin" element={<AdminPanel />} />
+          <Route path="superadmin" element={<SuperAdmin />} />
           <Route path="*" element={<div className="p-8 text-center text-muted-foreground">Em breve...</div>} />
         </Route>
       </Routes>
