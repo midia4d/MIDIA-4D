@@ -32,6 +32,11 @@ BEGIN
   IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='profiles' and column_name='igreja_id') THEN
       ALTER TABLE public.profiles ADD COLUMN igreja_id UUID REFERENCES public.igrejas(id) ON DELETE SET NULL;
   END IF;
+
+  -- Injeta a Coluna role no Perfil (Se não existir) p/ controle de Administradores
+  IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='profiles' and column_name='role') THEN
+      ALTER TABLE public.profiles ADD COLUMN role TEXT DEFAULT 'voluntario';
+  END IF;
 END $$;
 
 -- 3. Função Auxiliar para Facilitar o Frontend (Entrar na Igreja)
