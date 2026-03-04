@@ -152,28 +152,34 @@ export default function Login() {
 
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error("Usuário não autenticado");
+            if (!user) throw new Error("Usuário não autenticado no Supabase!");
 
             // Gerar um código aleatório (Ex: M4D-9A2X)
             const randomCode = 'M4D-' + Math.random().toString(36).substring(2, 6).toUpperCase();
 
             // 1. Chama a nova função RPC Atômica que já insere a Igreja e atualiza o Pastor na mesma transação:
-            const { error: igrejaErr } = await supabase.rpc('criar_nova_igreja', {
+            console.log("Chamando RPC criar_nova_igreja com UUID: ", user.id);
+            const { data: rpcData, error: igrejaErr } = await supabase.rpc('criar_nova_igreja', {
                 nome_igreja: nomeIgreja,
                 codigo: randomCode
             });
 
             if (igrejaErr) {
-                console.error("Erro RPC Igreja:", igrejaErr);
-                throw new Error("Não foi possível processar a criação do seu Ministério. O código do erro: " + igrejaErr.message);
+                console.error("ERRO FATAL NA RPC criar_nova_igreja:", igrejaErr);
+                throw new Error("Falha no Banco de Dados: " + igrejaErr.message + " (Hint: " + igrejaErr.hint + ")");
             }
 
-            // 2. Sucesso Absoluto!
+            console.log("Sucesso RPC! Igreja ID retornada: ", rpcData);
+
+            // 2. Força um Refresh da Sessão Local do Supabase Auth pra recarregar a patente e o Igreja_ID novo
+            await supabase.auth.refreshSession();
+
+            // 3. Sucesso Absoluto!
             navigate('/roteiro');
 
         } catch (error: any) {
-            console.error("Erro Criar Igreja:", error);
-            setErrorMsg(error.message || 'Erro ao criar o Ministério. Tente novamente.');
+            console.error("Erro Criar Igreja Catch Completo:", error);
+            setErrorMsg(error.message || 'Erro ao criar o Ministério. Verifique o F12 (Console).');
         } finally {
             setLoading(false);
         }
