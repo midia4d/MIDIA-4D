@@ -321,6 +321,16 @@ export default function Login() {
                                 <button onClick={() => setFase('nova_igreja')} className="text-sm font-bold text-blue-600 hover:text-blue-500 hover:underline transition-all">
                                     Criar o sistema para sua Igreja grátis
                                 </button>
+
+                                <button
+                                    onClick={async () => {
+                                        await supabase.auth.signOut();
+                                        window.location.reload();
+                                    }}
+                                    className="text-xs mt-4 text-red-500 hover:text-red-400 underline font-bold transition-all"
+                                >
+                                    Logado com conta errada ou travou? Clique aqui para Sair
+                                </button>
                             </div>
                         </>
                     )}
