@@ -148,82 +148,6 @@ $$;
 
 -- Notifica o PostgREST para reconhecer a nova Schema e Funções
 NOTIFY pgrst, 'reload schema';
--- 1. Tabela de Escalas
-CREATE TABLE IF NOT EXISTS public.escalas (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    titulo TEXT NOT NULL,
-    data_horario TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    created_by UUID REFERENCES public.profiles(id)
-);
-
--- 2. Tabela de Equipe da Escala
-CREATE TABLE IF NOT EXISTS public.escala_equipe (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    escala_id UUID REFERENCES public.escalas(id) ON DELETE CASCADE NOT NULL,
-    funcao TEXT NOT NULL,
-    membro_id UUID REFERENCES public.profiles(id),
-    status TEXT DEFAULT 'pendente' CHECK (status IN ('pendente', 'confirmado', 'recusado'))
-);
-
--- 3. Habilitar Segurança (RLS)
-ALTER TABLE public.escalas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.escala_equipe ENABLE ROW LEVEL SECURITY;
-
--- 4. Políticas para Escalas
--- Todos podem ver as escalas
-CREATE POLICY "Escalas visíveis para todos" ON public.escalas FOR SELECT USING (true);
--- Apenas admins podem modificar escalas
-CREATE POLICY "Apenas admins criam escalas" ON public.escalas FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
-);
-CREATE POLICY "Apenas admins editam escalas" ON public.escalas FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
-);
-CREATE POLICY "Apenas admins deletam escalas" ON public.escalas FOR DELETE USING (
-    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
-);
-
--- Acesso Admin para alterar a equipe
-CREATE POLICY "Admins gerenciam membros da escala" ON public.escala_equipe USING (
-    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
-);
--- Voluntário pode alterar O SEU PRÓPRIO status (confirmado/recusado)
-CREATE POLICY "Voluntários podem confirmar presença" ON public.escala_equipe FOR UPDATE USING (
-    auth.uid() = membro_id
-) WITH CHECK (
-    auth.uid() = membro_id
-);
--- Criação da tabela para armazenar os dias disponíveis dos voluntários
-CREATE TABLE IF NOT EXISTS public.disponibilidade (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    membro_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    data_disponivel DATE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    UNIQUE(membro_id, data_disponivel) -- Um membro não pode ter o mesmo dia duplicado
-);
-
--- Habilitar RLS
-ALTER TABLE public.disponibilidade ENABLE ROW LEVEL SECURITY;
-
--- Políticas de Segurança (Regras do Supabase)
--- 1. Qualquer usuário autenticado pode ler a disponibilidade (para o admin enxergar ao escalar)
-CREATE POLICY "Leitura de disponibilidade pública para autenticados" 
-ON public.disponibilidade 
-FOR SELECT USING (auth.role() = 'authenticated');
-
--- 2. Voluntários só podem inserir seus próprios dias
-CREATE POLICY "Voluntários inserem seus dias" 
-ON public.disponibilidade 
-FOR INSERT WITH CHECK (auth.uid() = membro_id);
-
--- 3. Voluntários só podem deletar seus próprios dias
-CREATE POLICY "Voluntários deletam seus dias" 
-ON public.disponibilidade 
-FOR DELETE USING (auth.uid() = membro_id);
-
--- Recarregar cache do esquema no Supabase
-NOTIFY pgrst, 'reload schema';
 -- Tabela de Blocos do Roteiro (Direção de Culto)
 CREATE TABLE IF NOT EXISTS public.roteiro_blocos (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -412,49 +336,52 @@ USING (EXISTS (
 
 -- Notifica o PostgREST para ler a nova tabela
 NOTIFY pgrst, 'reload schema';
--- Função do Robô de Ranking Automático
--- Esta função será acionada toda vez que o XP de um voluntário for alterado.
--- Ela calcula o novo nível baseado na quantidade de XP e atualiza o Perfil automaticamente.
+-- 1. Tabela de Escalas
+CREATE TABLE IF NOT EXISTS public.escalas (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    titulo TEXT NOT NULL,
+    data_horario TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_by UUID REFERENCES public.profiles(id)
+);
 
-CREATE OR REPLACE FUNCTION atualiza_nivel_voluntario()
-RETURNS TRIGGER AS $$
-DECLARE
-    novo_nivel TEXT;
-BEGIN
-    -- Lógica do Nível baseada no XP
-    IF NEW.xp < 100 THEN
-        novo_nivel := 'Bronze';
-    ELSIF NEW.xp >= 100 AND NEW.xp < 300 THEN
-        novo_nivel := 'Prata';
-    ELSIF NEW.xp >= 300 AND NEW.xp < 600 THEN
-        novo_nivel := 'Ouro';
-    ELSE
-        novo_nivel := 'Diamante';
-    END IF;
+-- 2. Tabela de Equipe da Escala
+CREATE TABLE IF NOT EXISTS public.escala_equipe (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    escala_id UUID REFERENCES public.escalas(id) ON DELETE CASCADE NOT NULL,
+    funcao TEXT NOT NULL,
+    membro_id UUID REFERENCES public.profiles(id),
+    status TEXT DEFAULT 'pendente' CHECK (status IN ('pendente', 'confirmado', 'recusado'))
+);
 
-    -- Apenas atualiza o texto se o nível for diferente do atual para não gerar loops infinitos
-    IF NEW.nivel IS DISTINCT FROM novo_nivel THEN
-        NEW.nivel := novo_nivel;
-        
-        -- Aqui (no futuro remoto) poderíamos também inserir na tabela de Notificações
-        -- avisando o usuário sobre a promoção de nível!
-    END IF;
+-- 3. Habilitar Segurança (RLS)
+ALTER TABLE public.escalas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.escala_equipe ENABLE ROW LEVEL SECURITY;
 
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+-- 4. Políticas para Escalas
+-- Todos podem ver as escalas
+CREATE POLICY "Escalas visíveis para todos" ON public.escalas FOR SELECT USING (true);
+-- Apenas admins podem modificar escalas
+CREATE POLICY "Apenas admins criam escalas" ON public.escalas FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
+);
+CREATE POLICY "Apenas admins editam escalas" ON public.escalas FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
+);
+CREATE POLICY "Apenas admins deletam escalas" ON public.escalas FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
+);
 
--- Remove o gatilho se ele já existir (para evitar erros ao rodar o script novamente)
-DROP TRIGGER IF EXISTS trigger_atualiza_nivel ON public.profiles;
-
--- Cria o Gatilho (Trigger) na Tabela Profiles
-CREATE TRIGGER trigger_atualiza_nivel
-BEFORE UPDATE OF xp ON public.profiles
-FOR EACH ROW
-EXECUTE FUNCTION atualiza_nivel_voluntario();
-
--- Adicional: Se fizermos um UPDATE vazio, ele vai recalcular todo mundo caso tenham XP
--- UPDATE public.profiles SET xp = xp;
+-- Acesso Admin para alterar a equipe
+CREATE POLICY "Admins gerenciam membros da escala" ON public.escala_equipe USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin')
+);
+-- Voluntário pode alterar O SEU PRÓPRIO status (confirmado/recusado)
+CREATE POLICY "Voluntários podem confirmar presença" ON public.escala_equipe FOR UPDATE USING (
+    auth.uid() = membro_id
+) WITH CHECK (
+    auth.uid() = membro_id
+);
 -- 1. Nova Coluna: Horário Exato do Check-in
 ALTER TABLE public.escala_equipe ADD COLUMN IF NOT EXISTS check_in_realizado TIMESTAMP WITH TIME ZONE;
 
@@ -539,56 +466,6 @@ CREATE TRIGGER trigger_notify_scale_assignment
     FOR EACH ROW
     EXECUTE FUNCTION notify_user_on_scale_assignment();
 -- ==========================================
--- ACADEMIA MÍDIA 4D - ATUALIZAÇÃO V2
--- Modulos, Aulas, Progresso e Avaliações
--- ==========================================
-
--- 1. Nova Tabela de Categorias/Módulos Pai
-CREATE TABLE IF NOT EXISTS public.treinamento_modulos (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    titulo TEXT NOT NULL,
-    descricao TEXT,
-    capa_url TEXT, -- Link da imagem de capa opcional
-    ordem INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- Habilitar RLS no Módulo
-ALTER TABLE public.treinamento_modulos ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Voluntários podem ver os modulos" ON public.treinamento_modulos FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "Admins c/e/d modulos" ON public.treinamento_modulos FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
-
--- 2. Atualização da tabela de treinamentos (Aulas Filhas)
--- Para não quebrar o que ele já criou agora, vamos apenas adicionar a chave estrangeira caso não exista
-DO $$
-BEGIN
-  IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='treinamentos' and column_name='modulo_id') THEN
-      ALTER TABLE public.treinamentos ADD COLUMN modulo_id UUID REFERENCES public.treinamento_modulos(id) ON DELETE CASCADE;
-  END IF;
-END $$;
-
--- 3. Tabela de Progresso e Avaliação (O Voluntário e sua relação com o Vídeo)
-CREATE TABLE IF NOT EXISTS public.treinamentos_progresso (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    membro_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    treinamento_id UUID NOT NULL REFERENCES public.treinamentos(id) ON DELETE CASCADE,
-    concluido BOOLEAN DEFAULT false,
-    avaliacao INTEGER CHECK (avaliacao >= 1 AND avaliacao <= 5), -- 1 a 5 estrelas
-    data_conclusao TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    UNIQUE(membro_id, treinamento_id) -- Uma pessoa só tem 1 progresso por aula
-);
-
--- Habilitar RLS no Progresso
-ALTER TABLE public.treinamentos_progresso ENABLE ROW LEVEL SECURITY;
--- Voluntário só vê, insere e altera o seu próprio progresso
-CREATE POLICY "Usuários veem próprio progresso" ON public.treinamentos_progresso FOR SELECT USING (auth.uid() = membro_id);
-CREATE POLICY "Usuários criam próprio progresso" ON public.treinamentos_progresso FOR INSERT WITH CHECK (auth.uid() = membro_id);
-CREATE POLICY "Usuários atualizam próprio progresso" ON public.treinamentos_progresso FOR UPDATE USING (auth.uid() = membro_id);
-
--- Notifica o PostgREST para reconhecer a nova Schema
-NOTIFY pgrst, 'reload schema';
--- ==========================================
 -- ACADEMIA MÍDIA 4D - E-Learning Volunteers
 -- ==========================================
 
@@ -640,12 +517,135 @@ CREATE POLICY "Admins podem deletar treinamentos"
 
 -- Notifica o PostgREST para reconhecer a nova Schema
 NOTIFY pgrst, 'reload schema';
+-- ==========================================
+-- ACADEMIA MÍDIA 4D - ATUALIZAÇÃO V2
+-- Modulos, Aulas, Progresso e Avaliações
+-- ==========================================
+
+-- 1. Nova Tabela de Categorias/Módulos Pai
+CREATE TABLE IF NOT EXISTS public.treinamento_modulos (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    capa_url TEXT, -- Link da imagem de capa opcional
+    ordem INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Habilitar RLS no Módulo
+ALTER TABLE public.treinamento_modulos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Voluntários podem ver os modulos" ON public.treinamento_modulos FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "Admins c/e/d modulos" ON public.treinamento_modulos FOR ALL USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+
+-- 2. Atualização da tabela de treinamentos (Aulas Filhas)
+-- Para não quebrar o que ele já criou agora, vamos apenas adicionar a chave estrangeira caso não exista
+DO $$
+BEGIN
+  IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='treinamentos' and column_name='modulo_id') THEN
+      ALTER TABLE public.treinamentos ADD COLUMN modulo_id UUID REFERENCES public.treinamento_modulos(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- 3. Tabela de Progresso e Avaliação (O Voluntário e sua relação com o Vídeo)
+CREATE TABLE IF NOT EXISTS public.treinamentos_progresso (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    membro_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    treinamento_id UUID NOT NULL REFERENCES public.treinamentos(id) ON DELETE CASCADE,
+    concluido BOOLEAN DEFAULT false,
+    avaliacao INTEGER CHECK (avaliacao >= 1 AND avaliacao <= 5), -- 1 a 5 estrelas
+    data_conclusao TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(membro_id, treinamento_id) -- Uma pessoa só tem 1 progresso por aula
+);
+
+-- Habilitar RLS no Progresso
+ALTER TABLE public.treinamentos_progresso ENABLE ROW LEVEL SECURITY;
+-- Voluntário só vê, insere e altera o seu próprio progresso
+CREATE POLICY "Usuários veem próprio progresso" ON public.treinamentos_progresso FOR SELECT USING (auth.uid() = membro_id);
+CREATE POLICY "Usuários criam próprio progresso" ON public.treinamentos_progresso FOR INSERT WITH CHECK (auth.uid() = membro_id);
+CREATE POLICY "Usuários atualizam próprio progresso" ON public.treinamentos_progresso FOR UPDATE USING (auth.uid() = membro_id);
+
+-- Notifica o PostgREST para reconhecer a nova Schema
+NOTIFY pgrst, 'reload schema';
+-- Criação da tabela para armazenar os dias disponíveis dos voluntários
+CREATE TABLE IF NOT EXISTS public.disponibilidade (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    membro_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    data_disponivel DATE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(membro_id, data_disponivel) -- Um membro não pode ter o mesmo dia duplicado
+);
+
+-- Habilitar RLS
+ALTER TABLE public.disponibilidade ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de Segurança (Regras do Supabase)
+-- 1. Qualquer usuário autenticado pode ler a disponibilidade (para o admin enxergar ao escalar)
+CREATE POLICY "Leitura de disponibilidade pública para autenticados" 
+ON public.disponibilidade 
+FOR SELECT USING (auth.role() = 'authenticated');
+
+-- 2. Voluntários só podem inserir seus próprios dias
+CREATE POLICY "Voluntários inserem seus dias" 
+ON public.disponibilidade 
+FOR INSERT WITH CHECK (auth.uid() = membro_id);
+
+-- 3. Voluntários só podem deletar seus próprios dias
+CREATE POLICY "Voluntários deletam seus dias" 
+ON public.disponibilidade 
+FOR DELETE USING (auth.uid() = membro_id);
+
+-- Recarregar cache do esquema no Supabase
+NOTIFY pgrst, 'reload schema';
 -- Adiciona a coluna para armazenar o recado de justificativa na escala
 ALTER TABLE public.escala_equipe 
 ADD COLUMN IF NOT EXISTS justificativa TEXT;
 
 -- Força o PostgREST a ler a nova coluna
 NOTIFY pgrst, 'reload schema';
+-- Função do Robô de Ranking Automático
+-- Esta função será acionada toda vez que o XP de um voluntário for alterado.
+-- Ela calcula o novo nível baseado na quantidade de XP e atualiza o Perfil automaticamente.
+
+CREATE OR REPLACE FUNCTION atualiza_nivel_voluntario()
+RETURNS TRIGGER AS $$
+DECLARE
+    novo_nivel TEXT;
+BEGIN
+    -- Lógica do Nível baseada no XP
+    IF NEW.xp < 100 THEN
+        novo_nivel := 'Bronze';
+    ELSIF NEW.xp >= 100 AND NEW.xp < 300 THEN
+        novo_nivel := 'Prata';
+    ELSIF NEW.xp >= 300 AND NEW.xp < 600 THEN
+        novo_nivel := 'Ouro';
+    ELSE
+        novo_nivel := 'Diamante';
+    END IF;
+
+    -- Apenas atualiza o texto se o nível for diferente do atual para não gerar loops infinitos
+    IF NEW.nivel IS DISTINCT FROM novo_nivel THEN
+        NEW.nivel := novo_nivel;
+        
+        -- Aqui (no futuro remoto) poderíamos também inserir na tabela de Notificações
+        -- avisando o usuário sobre a promoção de nível!
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Remove o gatilho se ele já existir (para evitar erros ao rodar o script novamente)
+DROP TRIGGER IF EXISTS trigger_atualiza_nivel ON public.profiles;
+
+-- Cria o Gatilho (Trigger) na Tabela Profiles
+CREATE TRIGGER trigger_atualiza_nivel
+BEFORE UPDATE OF xp ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION atualiza_nivel_voluntario();
+
+-- Adicional: Se fizermos um UPDATE vazio, ele vai recalcular todo mundo caso tenham XP
+-- UPDATE public.profiles SET xp = xp;
 -- ==============================================================
 -- ACADEMIA MÍDIA 4D - ATUALIZAÇÃO RLS MULTI-TENANT (SaaS)
 -- Blindagem Total de Leitura e Escrita entre Diferentes Igrejas
