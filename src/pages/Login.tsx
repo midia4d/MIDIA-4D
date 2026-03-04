@@ -62,7 +62,7 @@ export default function Login() {
 
             if (profile.igreja_id) {
                 // Já tem igreja? Vai pro App normal
-                navigate('/roteiro');
+                navigate('/');
             } else {
                 // Tem perfil real, mas não tem igreja (Pessoa recém cadastrada na Fase 2)
                 setFase('codigo');
@@ -128,7 +128,7 @@ export default function Login() {
 
             // Se rodou a RPC com sucesso, o Voluntário já tá linkado!
             if (data === true) {
-                navigate('/roteiro'); // Uhuu, bem vindo!
+                navigate('/'); // Uhuu, bem vindo!
             } else {
                 throw new Error("Código inválido ou Igreja não existe.");
             }
@@ -168,7 +168,7 @@ export default function Login() {
             }
 
             // 2. Sucesso Absoluto!
-            navigate('/roteiro');
+            navigate('/');
 
         } catch (error: any) {
             console.error("Erro Criar Igreja:", error);
