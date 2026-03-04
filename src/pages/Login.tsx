@@ -56,6 +56,7 @@ export default function Login() {
             if (!profile) {
                 console.warn("Conta Zumbi deletada do backend. Forçando Limpeza Local...");
                 await supabase.auth.signOut();
+                localStorage.clear(); // Brute force clean session from Vite
                 setFase('auth'); // Joga de volta pra digitar e-mail e criar a conta do zero
                 return;
             }
@@ -318,8 +319,16 @@ export default function Login() {
 
                             <div className="mt-8 pt-6 border-t border-border flex flex-col items-center justify-center gap-2 text-center">
                                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">É o líder da Mídia da sua igreja?</span>
-                                <button onClick={() => setFase('nova_igreja')} className="text-sm font-bold text-blue-600 hover:text-blue-500 hover:underline transition-all">
-                                    Criar o sistema para sua Igreja grátis
+                                <button type="button" onClick={() => setFase('nova_igreja')} className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-border bg-card text-foreground font-bold rounded-xl hover:bg-accent transition-colors">
+                                    <Clapperboard size={18} />
+                                    <span>Sou Líder, quero cadastrar Minha Igreja</span>
+                                </button>
+                            </div>
+
+                            {/* CAIXA DE FUGA (ANTI-STUCK / BUG DE CACHE) */}
+                            <div className="pt-6 mt-6 border-t border-border flex justify-center">
+                                <button type="button" onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); setFase('auth'); }} className="text-sm font-bold text-muted-foreground hover:text-red-500 transition-colors">
+                                    Entrar com outra conta
                                 </button>
                             </div>
                         </>
