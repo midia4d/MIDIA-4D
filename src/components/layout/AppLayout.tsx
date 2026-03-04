@@ -49,19 +49,11 @@ export default function AppLayout() {
                 setLoading(false);
             }
 
-            const { data: profile, error } = await supabase
+            const { data: profile } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', data.session.user.id)
-                .maybeSingle(); // mudado de single() para não quebrar feio
-
-            if (!profile || error) {
-                // Perfil fantasma! Conta foi apagada no back-end
-                await supabase.auth.signOut();
-                localStorage.clear();
-                window.location.href = '/login';
-                return;
-            }
+                .single();
 
             if (profile && mounted) {
                 setUser(profile);

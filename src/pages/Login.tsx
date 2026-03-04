@@ -56,7 +56,6 @@ export default function Login() {
             if (!profile) {
                 console.warn("Conta Zumbi deletada do backend. Forçando Limpeza Local...");
                 await supabase.auth.signOut();
-                localStorage.clear(); // Brute force clean session from Vite
                 setFase('auth'); // Joga de volta pra digitar e-mail e criar a conta do zero
                 return;
             }
@@ -152,34 +151,28 @@ export default function Login() {
 
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error("Usuário não autenticado no Supabase!");
+            if (!user) throw new Error("Usuário não autenticado");
 
             // Gerar um código aleatório (Ex: M4D-9A2X)
             const randomCode = 'M4D-' + Math.random().toString(36).substring(2, 6).toUpperCase();
 
             // 1. Chama a nova função RPC Atômica que já insere a Igreja e atualiza o Pastor na mesma transação:
-            console.log("Chamando RPC criar_nova_igreja com UUID: ", user.id);
-            const { data: rpcData, error: igrejaErr } = await supabase.rpc('criar_nova_igreja', {
+            const { error: igrejaErr } = await supabase.rpc('criar_nova_igreja', {
                 nome_igreja: nomeIgreja,
                 codigo: randomCode
             });
 
             if (igrejaErr) {
-                console.error("ERRO FATAL NA RPC criar_nova_igreja:", igrejaErr);
-                throw new Error("Falha no Banco de Dados: " + igrejaErr.message + " (Hint: " + igrejaErr.hint + ")");
+                console.error("Erro RPC Igreja:", igrejaErr);
+                throw new Error("Não foi possível processar a criação do seu Ministério. O código do erro: " + igrejaErr.message);
             }
 
-            console.log("Sucesso RPC! Igreja ID retornada: ", rpcData);
-
-            // 2. Força um Refresh da Sessão Local do Supabase Auth pra recarregar a patente e o Igreja_ID novo
-            await supabase.auth.refreshSession();
-
-            // 3. Sucesso Absoluto!
+            // 2. Sucesso Absoluto!
             navigate('/roteiro');
 
         } catch (error: any) {
-            console.error("Erro Criar Igreja Catch Completo:", error);
-            setErrorMsg(error.message || 'Erro ao criar o Ministério. Verifique o F12 (Console).');
+            console.error("Erro Criar Igreja:", error);
+            setErrorMsg(error.message || 'Erro ao criar o Ministério. Tente novamente.');
         } finally {
             setLoading(false);
         }
@@ -325,16 +318,8 @@ export default function Login() {
 
                             <div className="mt-8 pt-6 border-t border-border flex flex-col items-center justify-center gap-2 text-center">
                                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">É o líder da Mídia da sua igreja?</span>
-                                <button type="button" onClick={() => setFase('nova_igreja')} className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-border bg-card text-foreground font-bold rounded-xl hover:bg-accent transition-colors">
-                                    <Clapperboard size={18} />
-                                    <span>Sou Líder, quero cadastrar Minha Igreja</span>
-                                </button>
-                            </div>
-
-                            {/* CAIXA DE FUGA (ANTI-STUCK / BUG DE CACHE) */}
-                            <div className="pt-6 mt-6 border-t border-border flex justify-center">
-                                <button type="button" onClick={async () => { await supabase.auth.signOut(); localStorage.clear(); setFase('auth'); }} className="text-sm font-bold text-muted-foreground hover:text-red-500 transition-colors">
-                                    Entrar com outra conta
+                                <button onClick={() => setFase('nova_igreja')} className="text-sm font-bold text-blue-600 hover:text-blue-500 hover:underline transition-all">
+                                    Criar o sistema para sua Igreja grátis
                                 </button>
                             </div>
                         </>
