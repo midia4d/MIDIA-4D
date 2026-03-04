@@ -94,7 +94,7 @@ export default function Profile() {
                 <div className="pt-16 pb-8 px-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
                     <div>
                         <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-                            {user.nome || 'Voluntário'}
+                            {user.nome || (user.role === 'admin' ? 'Líder / Administrador' : 'Voluntário')}
                             <ShieldCheck className="text-blue-500" size={20} />
                         </h1>
                         <p className="text-muted-foreground font-medium flex items-center gap-2 mt-1">

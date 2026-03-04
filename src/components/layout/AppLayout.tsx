@@ -265,7 +265,9 @@ export default function AppLayout() {
                 </button>
                 <div className="px-3 py-2 mb-2 text-sm w-full overflow-hidden border-t border-border/50 md:border-t-0 pt-2 md:pt-0">
                     <div className="font-bold truncate">{user?.nome || user?.email}</div>
-                    <div className="text-xs text-muted-foreground truncate">{user?.funcao_principal || 'Voluntário'}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                        {user?.funcao_principal || (user?.role === 'admin' ? 'Líder / Administrador' : 'Voluntário')}
+                    </div>
                 </div>
                 <Link to="/perfil" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
                     <User size={18} />
