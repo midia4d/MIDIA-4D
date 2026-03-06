@@ -21,14 +21,6 @@ export default function AdminPanel() {
     const [tipReason, setTipReason] = useState('');
     const [isSendingTip, setIsSendingTip] = useState(false);
 
-    // Configurações da Igreja
-    const [minhaIgreja, setMinhaIgreja] = useState<any>(null);
-    const [editandoCodigo, setEditandoCodigo] = useState(false);
-    const [novoCodigo, setNovoCodigo] = useState('');
-    const [editandoNome, setEditandoNome] = useState(false);
-    const [novoNome, setNovoNome] = useState('');
-    const [salvandoCodigo, setSalvandoCodigo] = useState(false);
-
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -38,27 +30,25 @@ export default function AdminPanel() {
             if (session) {
                 const { data: profile } = await supabase
                     .from('profiles')
-                    .select('role, igreja_id')
+                    .select('role')
                     .eq('id', session.user.id)
                     .single();
 
-                if (profile?.role !== 'admin') {
+                let isAdmin = profile?.role === 'admin';
+                if (session.user.email && session.user.email.toLowerCase() === 'ieqceuazulpatos@gmail.com') {
+                    isAdmin = true;
+                }
+
+                if (!isAdmin) {
                     navigate('/');
                     return;
                 }
 
-                // Busca dados Globais da equipe + Busca a Igreja atrelada a esse Admin
-                const [{ data: perfis }, { data: histEquipe }, { data: igrejaInfo }] = await Promise.all([
+                // Busca dados Globais da equipe
+                const [{ data: perfis }, { data: histEquipe }] = await Promise.all([
                     supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-                    supabase.from('escala_equipe').select('membro_id, status'),
-                    supabase.from('igrejas').select('*').eq('admin_id', session.user.id).maybeSingle() // Puxa o workspace pelo fato dele ser criador!
+                    supabase.from('escala_equipe').select('membro_id, status')
                 ]);
-
-                if (igrejaInfo) {
-                    setMinhaIgreja({ ...igrejaInfo });
-                    setNovoCodigo(igrejaInfo.codigo_convite);
-                    setNovoNome(igrejaInfo.nome);
-                }
 
                 if (perfis && histEquipe) {
                     const stats = perfis.map(p => {
@@ -176,57 +166,7 @@ export default function AdminPanel() {
         }
     };
 
-    const handleSalvarCodigo = async () => {
-        if (!novoCodigo.trim() || novoCodigo.length < 3) return alert("Código muito curto!");
-        if (novoCodigo.trim() === minhaIgreja?.codigo_convite) return setEditandoCodigo(false);
-
-        setSalvandoCodigo(true);
-        try {
-            const code = novoCodigo.trim().toUpperCase();
-            const { error } = await supabase
-                .from('igrejas')
-                .update({ codigo_convite: code })
-                .eq('id', minhaIgreja.id);
-
-            if (error) {
-                if (error.code === '23505') throw new Error("Esse código já está em uso por outra igreja!");
-                throw error;
-            }
-
-            setMinhaIgreja({ ...minhaIgreja, codigo_convite: code });
-            setEditandoCodigo(false);
-            alert("Código de Convite atualizado com sucesso!");
-        } catch (error: any) {
-            console.error("Erro ao salvar código:", error);
-            alert(error.message || "Erro ao tentar atualizar o código de convite.");
-        } finally {
-            setSalvandoCodigo(false);
-        }
-    };
-
-    const handleSalvarNome = async () => {
-        if (!novoNome.trim() || novoNome.length < 3) return alert("O nome deve ter pelo menos 3 caracteres.");
-        if (novoNome.trim() === minhaIgreja?.nome) return setEditandoNome(false);
-
-        setSalvandoCodigo(true);
-        try {
-            const { error } = await supabase
-                .from('igrejas')
-                .update({ nome: novoNome.trim() })
-                .eq('id', minhaIgreja.id);
-
-            if (error) throw error;
-
-            setMinhaIgreja({ ...minhaIgreja, nome: novoNome.trim() });
-            setEditandoNome(false);
-        } catch (error: any) {
-            console.error("Erro ao salvar nome:", error);
-            alert("Erro ao tentar atualizar o nome da igreja.");
-        } finally {
-            setSalvandoCodigo(false);
-        }
-    };
-
+    // Removemos os handlers de edição de código de igreja pois agora o SaaS é single-tenant para a congregação mãe
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 pb-12">
 
@@ -431,85 +371,7 @@ export default function AdminPanel() {
                 </button>
             </div>
 
-            {/* Painel de Configurações do Workspace (SaaS Alpha) */}
-            {minhaIgreja && (
-                <div className="bg-card border-x-4 border-y border-x-indigo-500 border-y-border rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
-
-                    <div className="flex items-center gap-4 relative z-10 w-full md:w-auto">
-                        <div className="w-14 h-14 bg-indigo-500/10 text-indigo-500 rounded-full flex items-center justify-center shrink-0 border border-indigo-500/20 shadow-inner">
-                            <ShieldAlert size={28} />
-                        </div>
-                        <div>
-                            <div className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1.5 flex items-center gap-2">Workspace Ministério</div>
-                            {editandoNome ? (
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="text"
-                                        value={novoNome}
-                                        onChange={(e) => setNovoNome(e.target.value)}
-                                        className="font-black text-xl text-foreground bg-transparent border-b-2 border-indigo-500 focus:outline-none"
-                                        autoFocus
-                                    />
-                                    <button onClick={handleSalvarNome} disabled={salvandoCodigo} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-md">Salvar</button>
-                                    <button onClick={() => { setEditandoNome(false); setNovoNome(minhaIgreja.nome); }} className="px-3 py-1 bg-accent/50 text-foreground text-xs font-bold rounded-md">Cancelar</button>
-                                </div>
-                            ) : (
-                                <div className="group flex items-center gap-3">
-                                    <div className="text-xl font-black text-foreground">{minhaIgreja.nome}</div>
-                                    <button onClick={() => setEditandoNome(true)} className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-indigo-500 font-bold hover:underline">Editar Nome</button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="w-full md:w-auto bg-background p-4 rounded-xl border border-border shadow-sm flex flex-col md:flex-row items-center gap-4 relative z-10">
-                        <div className="text-center md:text-left">
-                            <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest leading-none mb-1">Código de Convite</div>
-                            {editandoCodigo ? (
-                                <input
-                                    type="text"
-                                    value={novoCodigo}
-                                    onChange={(e) => setNovoCodigo(e.target.value.toUpperCase())}
-                                    className="font-black text-2xl uppercase tracking-widest text-indigo-600 bg-transparent border-b-2 border-indigo-500 focus:outline-none w-32 text-center md:text-left"
-                                />
-                            ) : (
-                                <div className="font-black text-2xl tracking-widest text-indigo-600 font-mono select-all">
-                                    {minhaIgreja.codigo_convite}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex gap-2 w-full md:w-auto">
-                            {editandoCodigo ? (
-                                <>
-                                    <button
-                                        disabled={salvandoCodigo}
-                                        onClick={handleSalvarCodigo}
-                                        className="flex-1 md:flex-none px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-colors shadow-md disabled:opacity-50"
-                                    >
-                                        {salvandoCodigo ? 'Salvando...' : 'Salvar'}
-                                    </button>
-                                    <button
-                                        disabled={salvandoCodigo}
-                                        onClick={() => { setEditandoCodigo(false); setNovoCodigo(minhaIgreja.codigo_convite); }}
-                                        className="flex-1 md:flex-none px-4 py-2 bg-accent/50 hover:bg-accent text-foreground text-xs font-bold rounded-lg transition-colors"
-                                    >
-                                        Cancelar
-                                    </button>
-                                </>
-                            ) : (
-                                <button
-                                    onClick={() => setEditandoCodigo(true)}
-                                    className="w-full md:w-auto px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:hover:bg-indigo-500/20 text-xs font-bold rounded-lg transition-colors border border-indigo-200 dark:border-indigo-500/20"
-                                >
-                                    Mudar Código
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Painel de Configurações Removido por ser Single-Tenant */}
 
             {/* Quick Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

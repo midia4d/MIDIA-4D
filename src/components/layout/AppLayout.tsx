@@ -45,18 +45,40 @@ export default function AppLayout() {
             }
 
             if (mounted) {
-                setUser(data.session.user);
+                // Tenta puxar o perfil no BD
+                let fetchedProfile = null;
+                try {
+                    const { data: profileData, error } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', data.session.user.id)
+                        .single();
+                    if (!error) {
+                        fetchedProfile = profileData;
+                    }
+                } catch (e) {
+                    console.log("Erro ao buscar perfil base (talvez privilégios RLS pendentes)", e);
+                }
+
+                // Monta o usuário base com os dados do Auth
+                let mergedUser: any = { ...data.session.user };
+
+                // Mescla com Perfil do DB se existir
+                if (fetchedProfile) {
+                    mergedUser = { ...mergedUser, ...fetchedProfile };
+                }
+
+                // BYPASS ABSOLUTO (SINGLE-TENANT SUPREMO)
+                if (mergedUser.email && mergedUser.email.toLowerCase() === 'ieqceuazulpatos@gmail.com') {
+                    mergedUser.role = 'admin';
+                    mergedUser.funcao_principal = 'Líder / Administrador';
+
+                    // Fire and forget: Tenta gravar a patente garantida sem async handle
+                    supabase.from('profiles').update({ role: 'admin', funcao_principal: 'Líder / Administrador' }).eq('id', mergedUser.id).then();
+                }
+
+                setUser(mergedUser);
                 setLoading(false);
-            }
-
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', data.session.user.id)
-                .single();
-
-            if (profile && mounted) {
-                setUser(profile);
             }
         };
 

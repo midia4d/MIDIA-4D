@@ -15,7 +15,7 @@ interface Departamento {
 interface ChecklistItem {
     id: string;
     departamento_id: string;
-    texto: string;
+    descricao: string;
     ordem: number;
     check?: boolean; // Estado local do frontend
 }
@@ -331,10 +331,20 @@ id,
     const handleCreateItem = async (depId: string) => {
         if (!newItemText.trim()) return;
         const itemsDep = itens.filter(i => i.departamento_id === depId);
-        const { data, error } = await supabase.from('checklist_itens').insert({ departamento_id: depId, texto: newItemText, ordem: itemsDep.length + 1 }).select().single();
-        if (!error && data) {
-            setItens([...itens, { ...data, check: false }]);
-            setNewItemText('');
+
+        try {
+            const { data, error } = await supabase.from('checklist_itens').insert({ departamento_id: depId, descricao: newItemText, ordem: itemsDep.length + 1 }).select().single();
+            if (error) {
+                console.error("Erro insert", error);
+                alert("Falha no banco: " + error.message);
+                return;
+            }
+            if (data) {
+                setItens([...itens, { ...data, check: false }]);
+                setNewItemText('');
+            }
+        } catch (e) {
+            console.error(e);
         }
     };
 
@@ -584,7 +594,7 @@ id,
                                                             "font-bold text-sm transition-all flex-1 leading-snug",
                                                             item.check ? "text-green-500" : "text-foreground group-hover:text-blue-500"
                                                         )}>
-                                                            {item.texto}
+                                                            {item.descricao}
                                                         </span>
                                                     </label>
                                                 ))
@@ -698,7 +708,7 @@ id,
                                     <div className="space-y-2 mt-4 bg-accent/20 p-4 rounded-2xl border border-border">
                                         {itens.filter(i => i.departamento_id === editingDep.id).map(item => (
                                             <div key={item.id} className="flex items-center justify-between bg-card border border-border p-3 rounded-xl">
-                                                <span className="text-sm font-medium">{item.texto}</span>
+                                                <span className="text-sm font-medium">{item.descricao}</span>
                                                 <button onClick={() => handleDeleteItem(item.id)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg transition"><Trash2 size={16} /></button>
                                             </div>
                                         ))}

@@ -11,13 +11,29 @@ export default function Profile() {
         const fetchProfile = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
-                const { data } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single();
+                let fetchedData = null;
+                try {
+                    const { data, error } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+                    if (!error) fetchedData = data;
+                } catch (e) {
+                    console.log("Erro ao carregar perfil extra", e);
+                }
 
-                setUser({ ...session.user, ...data });
+                let mergedUser: any = { ...session.user };
+                if (fetchedData) {
+                    mergedUser = { ...mergedUser, ...fetchedData };
+                }
+
+                if (mergedUser.email && mergedUser.email.toLowerCase() === 'ieqceuazulpatos@gmail.com') {
+                    mergedUser.role = 'admin';
+                    mergedUser.funcao_principal = 'Líder / Administrador';
+                }
+
+                setUser(mergedUser);
             }
             setLoading(false);
         };

@@ -1,6 +1,7 @@
-import { CalendarCheck, Flame, Star, Video, Loader2 } from "lucide-react";
+import { CalendarCheck, Flame, Star, Video, Loader2, Sparkles, X } from "lucide-react";
 import { useOutletContext } from "react-router-dom";
 import { useEffect, useState } from "react";
+import Confetti from "react-confetti";
 import { supabase } from "../lib/supabase";
 import { getElo } from "../lib/gamification";
 import { cn } from "../lib/utils";
@@ -10,9 +11,26 @@ export default function Dashboard() {
     const [minhasEscalas, setMinhasEscalas] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    // Boas-Vindas state
+    const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+    const [showConfetti, setShowConfetti] = useState(false);
+
     useEffect(() => {
         if (!user) return;
         let isMounted = true;
+
+        // Dispara Modal de Boas-Vindas se tiver 50 XP e for a primeira vez
+        const welcomeKey = `welcome_${user.id}`;
+        const hasSeenWelcome = localStorage.getItem(welcomeKey);
+
+        if (!hasSeenWelcome && user.xp === 50) {
+            setShowWelcomeModal(true);
+            setShowConfetti(true);
+            setTimeout(() => {
+                if (isMounted) setShowConfetti(false);
+            }, 8000);
+            localStorage.setItem(welcomeKey, 'true');
+        }
 
         const fetchMinhasEscalas = async () => {
             setIsLoading(true);
@@ -49,8 +67,8 @@ export default function Dashboard() {
                 }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
                 setMinhasEscalas(validEscalas);
-                setIsLoading(false);
             }
+            if (isMounted) setIsLoading(false);
         };
 
         fetchMinhasEscalas();
@@ -153,6 +171,35 @@ export default function Dashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Modal Magnífico de Boas Vindas */}
+            {showWelcomeModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-500">
+                    {showConfetti && <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={600} gravity={0.15} />}
+
+                    <div className="bg-card w-full max-w-sm border border-border rounded-3xl p-8 shadow-2xl relative text-center flex flex-col items-center animate-in zoom-in-95 duration-700">
+                        <button onClick={() => setShowWelcomeModal(false)} className="absolute right-4 top-4 text-muted-foreground hover:text-foreground transition-colors">
+                            <X size={24} />
+                        </button>
+
+                        <div className="w-24 h-24 bg-gradient-to-br from-yellow-300 to-yellow-600 rounded-full flex items-center justify-center text-5xl shadow-xl shadow-yellow-500/30 mb-6 relative ring-4 ring-yellow-400/20">
+                            🎁
+                        </div>
+
+                        <h2 className="text-2xl font-black mb-2 flex items-center gap-2 justify-center text-foreground">
+                            <Sparkles className="text-yellow-500" /> Bônus Surpresa!
+                        </h2>
+
+                        <p className="text-muted-foreground font-medium mb-8 leading-relaxed">
+                            Apenas por aceitar esse chamado e fazer parte da <span className="text-foreground font-bold">Mídia 4D</span>, você acaba de ganhar <span className="text-yellow-500 font-black text-lg bg-yellow-500/10 px-2 rounded-md">50 XP</span> iniciais para largar na frente no Ranking de Engajamento!
+                        </p>
+
+                        <button onClick={() => setShowWelcomeModal(false)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg hover:shadow-blue-500/25 active:scale-95 text-lg">
+                            Bora Servir! 🚀
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
