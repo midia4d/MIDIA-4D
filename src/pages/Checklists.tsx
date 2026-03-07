@@ -91,14 +91,13 @@ export default function Checklists() {
             const itensWithCheck = (itensData || []).map(i => ({ ...i, check: false }));
             setItens(itensWithCheck);
 
-            // Verifica se o usuário já submeteu esse departamento hoje
-            checkSubmissionStatus(depsData?.[0]?.id || '');
+            // A checagem de finalização inicial foi movida para depois que descobrirmos a escalaAtiva, 
+            // evitando carregar o status do departamento errado antes da hora.
 
             // 3. Checagem de Segurança: O usuário está escalado hoje? (Se não for admin navegando livre)
             if (user?.role !== 'admin') {
 
                 // Busca escalas do dia onde o user tá escalado
-                // Como data_horario guarda hora (ex: 2024-03-01T23:00:00.000Z), pegamos todas e filtramos no JS pela data local
                 const { data: escalasUsuario } = await supabase
                     .from('escala_equipe')
                     .select(`
@@ -139,7 +138,7 @@ id,
                         if (depEscalado) {
                             setActiveDepId(depEscalado);
                             setEscalaAtiva(mapeadas[0]);
-                            checkSubmissionStatus(depEscalado);
+                            checkSubmissionStatus(depEscalado, mapeadas[0]);
                         }
                     } else {
                         setMinhasEscalasHoje([]);
@@ -148,7 +147,8 @@ id,
                     setMinhasEscalasHoje([]);
                 }
             } else {
-                // Se é Admin, vamos carregar os dados de auditoria logo de cara em Background
+                // Se é Admin, vamos carregar os dados de auditoria e status logo de cara 
+                checkSubmissionStatus(depsData?.[0]?.id || '', null);
                 carregarAuditoria();
             }
 
@@ -190,7 +190,7 @@ id,
     }, []);
 
     // Sempre que o departamento ativo muda, checar se ele já foi finalizado no db para aquele membro hoje
-    const checkSubmissionStatus = async (depId: string) => {
+    const checkSubmissionStatus = async (depId: string, currentEscalaOverride?: MinhaEscala | null) => {
         if (!depId || !user) return;
 
         setIsFinished(false);
@@ -200,9 +200,11 @@ id,
             .eq('membro_id', user.id)
             .eq('departamento_id', depId);
 
+        const usedEscala = currentEscalaOverride !== undefined ? currentEscalaOverride : escalaAtiva;
+
         // Se o voluntário tem uma escala vinculada desse depto, confere através da chave exata para evitar falhas de Timezone UTC no banco
-        if (escalaAtiva && escalaAtiva.escala_id) {
-            query.eq('escala_id', escalaAtiva.escala_id);
+        if (usedEscala && usedEscala.escala_id) {
+            query.eq('escala_id', usedEscala.escala_id);
         } else {
             query.gte('data_submissao', new Date().toISOString().split('T')[0] + ' 00:00:00');
         }
@@ -221,7 +223,9 @@ id,
 
     const handleTabChange = (depId: string) => {
         setActiveDepId(depId);
-        checkSubmissionStatus(depId);
+        const novaEscala = minhasEscalasHoje.find(m => m.departamento_id === depId) || null;
+        setEscalaAtiva(novaEscala);
+        checkSubmissionStatus(depId, novaEscala);
     };
 
     // Ações de Toggle Visual
@@ -476,19 +480,6 @@ id,
                             </p>
                             <p className="text-[11px] text-muted-foreground/70 uppercase font-bold tracking-widest mt-6">Volte no dia da sua escala oficial</p>
                         </div>
-                    ) : user?.role !== 'admin' && minhasEscalasHoje.length > 0 && !minhasEscalasHoje.some(m => m.check_in_realizado) ? (
-                        <div className="flex flex-col items-center justify-center p-12 bg-card border border-border border-dashed rounded-3xl text-center shadow-sm">
-                            <AlertTriangle size={48} className="text-blue-500 mb-4" />
-                            <h3 className="text-2xl font-black mb-2 text-foreground">Check-in Pendente</h3>
-                            <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
-                                Você está escalado hoje, mas ainda não se apresentou no templo para registrar sua chegada.
-                            </p>
-                            <div className="mt-8">
-                                <a href="/escalas" className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white truncate font-bold rounded-xl transition-all shadow-md mt-6">
-                                    Ir para Escalas e Fazer Check-in
-                                </a>
-                            </div>
-                        </div>
                     ) : (
                         <div className="flex flex-col md:flex-row gap-8">
 
@@ -533,7 +524,20 @@ id,
 
                             {/* Itens do Checklist Content */}
                             <div className="flex-1 bg-card border border-border rounded-3xl p-6 lg:p-8 shadow-sm">
-                                {activeDep ? (
+                                {user?.role !== 'admin' && (!escalaAtiva || !escalaAtiva.check_in_realizado) ? (
+                                    <div className="flex flex-col items-center justify-center p-12 text-center h-full">
+                                        <AlertTriangle size={48} className="text-blue-500 mb-4" />
+                                        <h3 className="text-2xl font-black mb-2 text-foreground">Check-in Pendente</h3>
+                                        <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
+                                            Você está escalado em <strong className="capitalize text-foreground">{activeDep?.nome}</strong>, mas ainda não registrou sua chegada <strong>neste culto ({escalaAtiva?.escala_titulo})</strong>.
+                                        </p>
+                                        <div className="mt-8">
+                                            <a href="/escalas" className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all shadow-md mt-6 block max-w-max mx-auto">
+                                                Ir para Escalas e Fazer Check-in
+                                            </a>
+                                        </div>
+                                    </div>
+                                ) : activeDep ? (
                                     <>
                                         <div className="mb-6 pb-6 border-b border-border flex items-center gap-4">
                                             <div className="w-14 h-14 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center shadow-inner">
