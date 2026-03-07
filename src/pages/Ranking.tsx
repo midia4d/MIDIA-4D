@@ -171,8 +171,9 @@ export default function Ranking() {
 
                 {/* Trilha de Patentes (Elos) */}
                 <div>
-                    <h3 className="text-xl font-bold mb-4 ml-1 flex items-center gap-2">
-                        <Crown className="text-yellow-500" /> Trilha de Patentes
+                    <h3 className="text-xl font-bold mb-4 ml-1 flex items-center justify-between">
+                        <span className="flex items-center gap-2"><Crown className="text-yellow-500" /> Trilha de Patentes</span>
+                        <span className="text-sm font-black bg-gradient-to-r from-yellow-500 to-amber-600 text-transparent bg-clip-text px-3 py-1 bg-yellow-500/10 rounded-full border border-yellow-500/20 shadow-sm flex items-center gap-1">Você tem: {user?.xp || 0} XP</span>
                     </h3>
 
                     <div className="bg-card border border-border rounded-3xl p-5 shadow-sm space-y-4">
