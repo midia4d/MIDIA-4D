@@ -355,20 +355,29 @@ export default function Escalas() {
         let textoJustificativa: string | null = null;
 
         if (novoStatus === 'recusado') {
-            const promptTexto = prompt("Por favor, informe rapidamente o motivo da falta para as lideranças:");
+            const promptTexto = prompt("Por favor, informe rapidamente o motivo da ausência para justificar aos líderes e liberar a vaga para cobertura:");
             if (promptTexto === null) return; // Se o usuário cancelar o prompt, aborta a ação
             textoJustificativa = promptTexto.trim() === '' ? 'Sem justificativa informada' : promptTexto;
+
+            try {
+                const { error } = await supabase.rpc('cancelar_escala_vaga', {
+                    p_escala_equipe_id: escalaEquipeId,
+                    p_justificativa: textoJustificativa
+                });
+
+                if (error) throw error;
+                await fetchEscalas();
+            } catch (error) {
+                console.error("Erro ao cancelar vaga:", error);
+                alert("Erro ao cancelar vaga e gerar cobertura. Tente novamente.");
+            }
+            return;
         }
 
         try {
-            const updatePayload: any = { status: novoStatus };
-            if (textoJustificativa !== null) {
-                updatePayload.justificativa = textoJustificativa;
-            }
-
             const { error } = await supabase
                 .from('escala_equipe')
-                .update(updatePayload)
+                .update({ status: novoStatus })
                 .eq('id', escalaEquipeId);
 
             if (error) throw error;
@@ -376,6 +385,22 @@ export default function Escalas() {
         } catch (error) {
             console.error("Erro ao atualizar status:", error);
             alert("Erro ao atualizar status. Tente novamente.");
+        }
+    };
+
+    // Assumir Vaga Aberta (Cobertura)
+    const handleAssumirVaga = async (escalaEquipeId: string) => {
+        if (!confirm("Tem certeza que deseja assumir esta vaga de cobertura na equipe?")) return;
+        try {
+            const { error } = await supabase.rpc('assumir_vaga_escala', {
+                p_escala_equipe_id: escalaEquipeId
+            });
+            if (error) throw error;
+            await fetchEscalas();
+            alert("Parabéns! Vaga assumida com sucesso. Você foi confirmado nesta escala.");
+        } catch (error: any) {
+            console.error("Erro ao assumir vaga:", error);
+            alert(`Erro ao assumir vaga: ${error.message || 'Desconhecido'}`);
         }
     };
 
@@ -526,17 +551,17 @@ export default function Escalas() {
                                     <div className="text-sm text-muted-foreground py-2 border-b border-border/50 italic">Ninguém escalado ainda.</div>
                                 ) : (
                                     escala.equipe.map((slot: any, i: number) => (
-                                        <div key={i} className="flex flex-col p-3 rounded-xl border border-border bg-background hover:bg-accent/50 transition-colors cursor-pointer group">
+                                        <div key={i} className={cn("flex flex-col p-3 rounded-xl border transition-colors cursor-pointer group", !slot.membro_id ? "bg-orange-500/10 border-orange-500/50 hover:bg-orange-500/20 shadow-sm shadow-orange-500/10" : "bg-background border-border hover:bg-accent/50")}>
                                             {/* Top Row: Avatar, Nome e Lixeira */}
                                             <div className="flex items-center justify-between w-full">
                                                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
-                                                        <Clapperboard size={14} />
+                                                    <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", !slot.membro_id ? "bg-orange-500 text-white shadow-md shadow-orange-500/20" : "bg-blue-500/10 text-blue-500")}>
+                                                        {slot.membro_id ? <Clapperboard size={14} /> : <Users size={14} />}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1">
-                                                            <p className="font-bold text-base truncate flex items-center gap-2 flex-wrap">
-                                                                {slot.membro_id ? (membros.find(m => m.id === slot.membro_id)?.nome || 'Voluntário') : 'Vaga Aberta'}
+                                                            <p className={cn("font-bold text-base truncate flex items-center gap-2 flex-wrap", !slot.membro_id && "text-orange-500 text-lg")}>
+                                                                {slot.membro_id ? (membros.find(m => m.id === slot.membro_id)?.nome || 'Voluntário') : '🚨 VAGA DE COBERTURA 🚨'}
                                                                 {slot.status === 'confirmado' && <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">Confirmado</span>}
                                                                 {slot.status === 'recusado' && <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-bold">Ausente</span>}
                                                                 {slot.status === 'pendente' && slot.membro_id && <span className="text-xs bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded-full font-bold">Pendente</span>}
@@ -579,7 +604,7 @@ export default function Escalas() {
                                             {/* Ações do Voluntário ou do Admin (Forçar e Checkin) */}
                                             <div className="flex items-center justify-between gap-4 mt-4 pt-3 border-t border-border flex-wrap sm:flex-nowrap w-full">
                                                 {/* VISÃO VOLUNTÁRIO DONO DO SLOT */}
-                                                {user && slot.membro_id === user.id && !slot.check_in_realizado ? (
+                                                {user && slot.membro_id === user.id && !slot.check_in_realizado && slot.status !== 'recusado' ? (
                                                     <div className="flex flex-col sm:flex-row gap-2 w-full">
                                                         {slot.status === 'pendente' && (
                                                             <>
@@ -598,13 +623,31 @@ export default function Escalas() {
                                                             </>
                                                         )}
                                                         {slot.status === 'confirmado' && (
-                                                            <button
-                                                                onClick={() => handleCheckin(slot.id, escala.raw_data_horario)}
-                                                                className="flex-1 bg-blue-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-500 transition-colors flex items-center justify-center gap-1 shadow-[0_0_15px_rgba(37,99,235,0.4)] animate-pulse"
-                                                            >
-                                                                🔥 Fazer Check-in no Templo
-                                                            </button>
+                                                            <>
+                                                                <button
+                                                                    onClick={() => handleCheckin(slot.id, escala.raw_data_horario)}
+                                                                    className="flex-1 bg-blue-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-500 transition-colors flex items-center justify-center gap-1 shadow-[0_0_15px_rgba(37,99,235,0.4)] animate-pulse"
+                                                                >
+                                                                    🔥 Fazer Check-in no Templo
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleUpdateStatus(slot.id, 'recusado')}
+                                                                    className="px-4 bg-red-500/10 text-red-500 text-xs font-bold py-2 rounded-lg hover:bg-red-500 hover:text-white transition-colors border border-red-500/20"
+                                                                    title="Desistir da Escala"
+                                                                >
+                                                                    Cancelar
+                                                                </button>
+                                                            </>
                                                         )}
+                                                    </div>
+                                                ) : !slot.membro_id ? (
+                                                    <div className="flex-1 flex w-full">
+                                                        <button
+                                                            onClick={() => handleAssumirVaga(slot.id)}
+                                                            className="w-full bg-gradient-to-r from-orange-500 to-amber-600 text-white text-xs font-black py-2.5 rounded-lg hover:from-orange-600 hover:to-amber-700 transition-all shadow-lg shadow-orange-500/20 uppercase tracking-wider flex items-center justify-center gap-2"
+                                                        >
+                                                            ✨ ME OFEREÇO PARA COBRIR
+                                                        </button>
                                                     </div>
                                                 ) : (
                                                     <div className="flex-1 flex justify-between items-center text-xs font-medium text-muted-foreground sm:min-w-[150px]">
