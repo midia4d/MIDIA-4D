@@ -86,7 +86,11 @@ export default function Roteiro() {
     const handleSalvarBloco = async () => {
         if (!newBloco.titulo) return;
         if (!user?.igreja_id) {
-            alert("Erro: Você não está vinculado a uma igreja. Por favor, faça login novamente.");
+            if (user?.role === 'admin') {
+                alert("Atenção Admin: Seu perfil ainda não está vinculado a uma Igreja. \n\nPor favor, execute o script de reparo no Supabase ou vincule seu usuário a uma igreja no painel de controle.");
+            } else {
+                alert("Erro: Você não está vinculado a uma igreja. Por favor, peça ao seu líder para te vincular.");
+            }
             return;
         }
 
