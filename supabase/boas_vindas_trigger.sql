@@ -5,7 +5,7 @@
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  -- 1. Cria o Perfil Base com 50 XP Inicial
+  -- 1. Cria o Perfil Base com 0 XP Inicial
   INSERT INTO public.profiles (id, nome, role, xp)
   VALUES (
     new.id, 
@@ -15,15 +15,15 @@ BEGIN
       'Novo Operador'
     ),
     'voluntario',
-    50
+    0
   );
 
-  -- 2. Dispara uma Notificação PUSH de Boas-Vindas avisando do bônus
+  -- 2. Dispara uma Notificação PUSH Básica (Sem bônus)
   INSERT INTO public.notificacoes (membro_id, titulo, mensagem, tipo, lida)
   VALUES (
     new.id,
-    'Presente de Boas-Vindas! 🎁',
-    'Você acaba de ganhar 50 XP iniciais de bônus para começar sua jornada com o pé direito!',
+    'Sua conta foi criada no Mídia 4D! 🎬',
+    'Fale com seu líder ou coordenador para receber o link de convite e se vincular na sua Igreja!',
     'sistema',
     false
   );

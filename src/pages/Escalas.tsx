@@ -622,23 +622,51 @@ export default function Escalas() {
                                                                 </button>
                                                             </>
                                                         )}
-                                                        {slot.status === 'confirmado' && (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => handleCheckin(slot.id, escala.raw_data_horario)}
-                                                                    className="flex-1 bg-blue-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-500 transition-colors flex items-center justify-center gap-1 shadow-[0_0_15px_rgba(37,99,235,0.4)] animate-pulse"
-                                                                >
-                                                                    🔥 Fazer Check-in no Templo
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleUpdateStatus(slot.id, 'recusado')}
-                                                                    className="px-4 bg-red-500/10 text-red-500 text-xs font-bold py-2 rounded-lg hover:bg-red-500 hover:text-white transition-colors border border-red-500/20"
-                                                                    title="Desistir da Escala"
-                                                                >
-                                                                    Cancelar
-                                                                </button>
-                                                            </>
-                                                        )}
+                                                        {slot.status === 'confirmado' && (() => {
+                                                            const eventTime = new Date(escala.raw_data_horario);
+                                                            const now = new Date();
+                                                            const diffInMs = eventTime.getTime() - now.getTime();
+                                                            const diffInHours = diffInMs / (1000 * 60 * 60);
+                                                            const canCheckIn = diffInHours <= 2; // Libera 2h antes
+
+                                                            if (canCheckIn) {
+                                                                return (
+                                                                    <>
+                                                                        <button
+                                                                            onClick={() => handleCheckin(slot.id, escala.raw_data_horario)}
+                                                                            className="flex-1 bg-blue-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-blue-500 transition-colors flex items-center justify-center gap-1 shadow-[0_0_15px_rgba(37,99,235,0.4)] animate-pulse"
+                                                                        >
+                                                                            🔥 Fazer Check-in no Templo
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleUpdateStatus(slot.id, 'recusado')}
+                                                                            className="px-4 bg-red-500/10 text-red-500 text-xs font-bold py-2 rounded-lg hover:bg-red-500 hover:text-white transition-colors border border-red-500/20"
+                                                                            title="Desistir da Escala"
+                                                                        >
+                                                                            Cancelar
+                                                                        </button>
+                                                                    </>
+                                                                );
+                                                            } else {
+                                                                // Mostrar quando será liberado
+                                                                const releaseTime = new Date(eventTime.getTime() - (2 * 60 * 60 * 1000));
+                                                                const timeStr = releaseTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                                return (
+                                                                    <div className="flex flex-col sm:flex-row gap-2 w-full items-center">
+                                                                        <div className="flex-1 bg-accent/50 text-muted-foreground text-[10px] sm:text-xs font-bold py-2.5 rounded-lg border border-border flex items-center justify-center gap-2 w-full">
+                                                                            <Clock size={14} /> Check-in liberado às {timeStr}
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => handleUpdateStatus(slot.id, 'recusado')}
+                                                                            className="px-4 bg-red-500/10 text-red-500 text-xs font-bold py-2.5 rounded-lg hover:bg-red-500 hover:text-white transition-colors border border-red-500/20 w-full sm:w-auto"
+                                                                            title="Desistir da Escala"
+                                                                        >
+                                                                            Cancelar
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                        })()}
                                                     </div>
                                                 ) : !slot.membro_id ? (
                                                     <div className="flex-1 flex w-full">
