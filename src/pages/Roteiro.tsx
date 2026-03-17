@@ -13,12 +13,21 @@ type RoteiroBloco = {
     ordem: number;
     status: 'pendente' | 'ao_vivo' | 'concluido';
     escala_id?: string;
+    ao_vivo_desde?: string;
+};
+
+type StatusDepartamento = {
+    departamento: string;
+    status: 'pendente' | 'pronto';
 };
 
 export default function Roteiro() {
     const { user } = useOutletContext<{ user: any }>();
     const [isAlerting, setIsAlerting] = useState(false);
     const [blocos, setBlocos] = useState<RoteiroBloco[]>([]);
+    const [statusDeps, setStatusDeps] = useState<StatusDepartamento[]>([]);
+    const [checklistsProntos, setChecklistsProntos] = useState<string[]>([]);
+    const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newBloco, setNewBloco] = useState<Partial<RoteiroBloco>>({
@@ -28,20 +37,26 @@ export default function Roteiro() {
     // Fetch and Realtime Sync
     useEffect(() => {
         fetchBlocos();
+        fetchStatusDepartamentos();
+        verificarChecklistsDoDia();
 
         const channel = supabase.channel('roteiro_sync');
 
         // Escuta alertas do diretor
-        channel.on('broadcast', { event: 'alerta_diretor' }, (payload) => {
-            console.log("Alerta recebido do diretor!", payload);
+        channel.on('broadcast', { event: 'alerta_diretor' }, () => {
             setIsAlerting(true);
         });
 
-        // Escuta mudanças na tabela do roteiro (para atualizar a pauta ao vivo)
+        // Escuta mudanças na tabela do roteiro
         const dbSub = supabase.channel('roteiro_db_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'roteiro_blocos' }, (payload) => {
-                console.log('Roteiro alterado:', payload);
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'roteiro_blocos' }, () => {
                 fetchBlocos();
+            }).subscribe();
+
+        // Escuta mudanças no status dos departamentos
+        const statusSub = supabase.channel('status_deps_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'roteiro_status_departamentos' }, () => {
+                fetchStatusDepartamentos();
             }).subscribe();
 
         channel.subscribe();
@@ -49,8 +64,81 @@ export default function Roteiro() {
         return () => {
             supabase.removeChannel(channel);
             supabase.removeChannel(dbSub);
+            supabase.removeChannel(statusSub);
         };
     }, []);
+
+    // Timer Logic
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const liveBlock = blocos.find(b => b.status === 'ao_vivo');
+            if (liveBlock && liveBlock.ao_vivo_desde && liveBlock.duracao_estimada) {
+                const start = new Date(liveBlock.ao_vivo_desde).getTime();
+                const now = new Date().getTime();
+                const duracaoMin = parseInt(liveBlock.duracao_estimada.match(/\d+/)?.[0] || '0');
+                const duracaoMs = duracaoMin * 60 * 1000;
+                
+                const diff = duracaoMs - (now - start);
+                
+                if (diff <= -3600000) { // Mais de 1h de atraso, provavelmente esqueceu ligado
+                    setTimeRemaining("--:--");
+                } else {
+                    const absDiff = Math.abs(diff);
+                    const mins = Math.floor(absDiff / 60000);
+                    const secs = Math.floor((absDiff % 60000) / 1000);
+                    const sign = diff < 0 ? "-" : "";
+                    setTimeRemaining(`${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+                }
+            } else {
+                setTimeRemaining(null);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [blocos]);
+
+    const fetchStatusDepartamentos = async () => {
+        if (!user?.igreja_id) return;
+        const { data } = await supabase
+            .from('roteiro_status_departamentos')
+            .select('*')
+            .eq('igreja_id', user.igreja_id);
+        if (data) setStatusDeps(data);
+    };
+
+    const verificarChecklistsDoDia = async () => {
+        if (!user?.igreja_id) return;
+        const hoje = new Date().toISOString().split('T')[0];
+        
+        // Busca submissões de hoje trazendo o nome do departamento via JOIN
+        const { data } = await supabase
+            .from('checklist_submissoes')
+            .select(`
+                id,
+                checklist_departamentos(nome)
+            `)
+            .eq('igreja_id', user.igreja_id)
+            .gte('data_submissao', hoje);
+        
+        if (data) {
+            const areas = data
+                .map((d: any) => d.checklist_departamentos?.nome?.toLowerCase() || '')
+                .filter(Boolean);
+            setChecklistsProntos(areas);
+        }
+    };
+
+    const handleUpdateDepStatus = async (dep: string, status: 'pendente' | 'pronto') => {
+        if (!user?.igreja_id) return;
+        await supabase
+            .from('roteiro_status_departamentos')
+            .upsert({ 
+                igreja_id: user.igreja_id, 
+                departamento: dep, 
+                status,
+                updated_by: user.id
+            }, { onConflict: 'igreja_id,departamento' });
+    };
 
     const fetchBlocos = async () => {
         if (!user?.igreja_id) return;
@@ -119,8 +207,11 @@ export default function Roteiro() {
             if (currentLive) {
                 await supabase.from('roteiro_blocos').update({ status: 'concluido' }).eq('id', currentLive.id);
             }
+            // Inicia o cronômetro para o novo bloco
+            await supabase.from('roteiro_blocos').update({ status, ao_vivo_desde: new Date().toISOString() }).eq('id', id);
+        } else {
+            await supabase.from('roteiro_blocos').update({ status }).eq('id', id);
         }
-        await supabase.from('roteiro_blocos').update({ status }).eq('id', id);
     };
 
     const handleDelete = async (id: string) => {
@@ -317,6 +408,14 @@ export default function Roteiro() {
                                                         "{bloco.descricao}"
                                                     </p>
                                                 )}
+                                                {bloco.status === 'ao_vivo' && timeRemaining && (
+                                                    <div className="mt-3 flex items-center gap-2 text-xl font-black font-mono">
+                                                        <Clock size={20} className={cn(timeRemaining.startsWith('-') ? "text-red-500 animate-pulse" : "text-blue-500")} />
+                                                        <span className={cn(timeRemaining.startsWith('-') ? "text-red-500" : "text-blue-500")}>
+                                                            {timeRemaining}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Ações (Apenas Admin) */}
@@ -357,8 +456,9 @@ export default function Roteiro() {
                     <div className="bg-card border border-border rounded-3xl p-6 shadow-sm relative overflow-hidden">
 
                         {/* Live indicator se tiver algo rolando */}
-                        {blocos.some(b => b.status === 'ao_vivo') && (
+                        {(blocos.some(b => b.status === 'ao_vivo') || timeRemaining) && (
                             <div className="absolute top-6 right-6 flex items-center gap-2">
+                                {timeRemaining && <span className={cn("text-sm font-black font-mono mr-2", timeRemaining.startsWith('-') ? "text-red-500" : "text-blue-500")}>{timeRemaining}</span>}
                                 <span className="relative flex h-3 w-3">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
@@ -370,42 +470,85 @@ export default function Roteiro() {
                         <h3 className="text-lg font-bold mb-6">Status da Equipe</h3>
 
                         <div className="space-y-4">
+                            {/* Câmeras */}
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center">
+                                    <div className={cn(
+                                        "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                                        (checklistsProntos.includes('camera') || statusDeps.find(d => d.departamento === 'cameras')?.status === 'pronto') 
+                                            ? "bg-green-500/10 text-green-500" : "bg-accent text-muted-foreground"
+                                    )}>
                                         <Video size={16} />
                                     </div>
                                     <div>
                                         <div className="text-sm font-bold">Câmeras (1, 2)</div>
-                                        <div className="text-xs text-muted-foreground">Checklists OK</div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {checklistsProntos.includes('camera') ? "Checklist Finalizado" : "Aguardando Checklist"}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="text-green-500"><AlertTriangle size={16} className="hidden" /> Pronto</div>
+                                <button 
+                                    onClick={() => handleUpdateDepStatus('cameras', statusDeps.find(d => d.departamento === 'cameras')?.status === 'pronto' ? 'pendente' : 'pronto')}
+                                    className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md transition-all",
+                                        statusDeps.find(d => d.departamento === 'cameras')?.status === 'pronto' ? "bg-green-500/20 text-green-500" : "bg-card border border-border text-muted-foreground"
+                                    )}
+                                >
+                                    {statusDeps.find(d => d.departamento === 'cameras')?.status === 'pronto' ? "PRONTO" : "Ocupado"}
+                                </button>
                             </div>
 
+                            {/* Luz */}
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-500 flex items-center justify-center">
+                                    <div className={cn(
+                                        "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                                        (checklistsProntos.includes('luz') || checklistsProntos.includes('iluminação') || statusDeps.find(d => d.departamento === 'luz')?.status === 'pronto') 
+                                            ? "bg-green-500/10 text-green-500" : "bg-accent text-muted-foreground"
+                                    )}>
                                         <Lightbulb size={16} />
                                     </div>
                                     <div>
                                         <div className="text-sm font-bold">Luz / DMX</div>
-                                        <div className="text-xs text-muted-foreground">Cenas Carregadas</div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {checklistsProntos.includes('luz') || checklistsProntos.includes('iluminação') ? "Cenas Prontas" : "Carregando Cenas"}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="text-green-500">Pronto</div>
+                                <button 
+                                    onClick={() => handleUpdateDepStatus('luz', statusDeps.find(d => d.departamento === 'luz')?.status === 'pronto' ? 'pendente' : 'pronto')}
+                                    className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md transition-all",
+                                        statusDeps.find(d => d.departamento === 'luz')?.status === 'pronto' ? "bg-green-500/20 text-green-500" : "bg-card border border-border text-muted-foreground"
+                                    )}
+                                >
+                                    {statusDeps.find(d => d.departamento === 'luz')?.status === 'pronto' ? "PRONTO" : "Ocupado"}
+                                </button>
                             </div>
 
-                            <div className="flex items-center justify-between opacity-50">
+                            {/* Som */}
+                            <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center">
+                                    <div className={cn(
+                                        "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                                        (checklistsProntos.includes('som') || checklistsProntos.includes('audio') || statusDeps.find(d => d.departamento === 'som')?.status === 'pronto') 
+                                            ? "bg-green-500/10 text-green-500" : "bg-accent text-muted-foreground"
+                                    )}>
                                         <Mic size={16} />
                                     </div>
                                     <div>
                                         <div className="text-sm font-bold">Som (PA)</div>
-                                        <div className="text-xs text-muted-foreground">Não Integrado</div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {checklistsProntos.includes('som') || checklistsProntos.includes('audio') ? "Áudio OK" : "Passagem de Som"}
+                                        </div>
                                     </div>
                                 </div>
+                                <button 
+                                    onClick={() => handleUpdateDepStatus('som', statusDeps.find(d => d.departamento === 'som')?.status === 'pronto' ? 'pendente' : 'pronto')}
+                                    className={cn("text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md transition-all",
+                                        statusDeps.find(d => d.departamento === 'som')?.status === 'pronto' ? "bg-green-500/20 text-green-500" : "bg-card border border-border text-muted-foreground"
+                                    )}
+                                >
+                                    {statusDeps.find(d => d.departamento === 'som')?.status === 'pronto' ? "PRONTO" : "Ocupado"}
+                                </button>
                             </div>
                         </div>
 
