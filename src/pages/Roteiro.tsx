@@ -53,9 +53,12 @@ export default function Roteiro() {
     }, []);
 
     const fetchBlocos = async () => {
+        if (!user?.igreja_id) return;
+
         const { data, error } = await supabase
             .from('roteiro_blocos')
             .select('*')
+            .eq('igreja_id', user.igreja_id)
             .order('ordem', { ascending: true });
 
         if (data) setBlocos(data as RoteiroBloco[]);
@@ -82,13 +85,27 @@ export default function Roteiro() {
 
     const handleSalvarBloco = async () => {
         if (!newBloco.titulo) return;
+        if (!user?.igreja_id) {
+            alert("Erro: Você não está vinculado a uma igreja. Por favor, faça login novamente.");
+            return;
+        }
 
-        const ordem = blocos.length;
-        await supabase.from('roteiro_blocos').insert([{ ...newBloco, ordem }]);
+        try {
+            const ordem = blocos.length;
+            const { error } = await supabase.from('roteiro_blocos').insert([{ 
+                ...newBloco, 
+                ordem,
+                igreja_id: user.igreja_id 
+            }]);
 
-        setIsModalOpen(false);
-        setNewBloco({ titulo: '', descricao: '', duracao_estimada: '', tipo: 'comum' });
-        // O realtime vai atualizar a grid sozinho
+            if (error) throw error;
+
+            setIsModalOpen(false);
+            setNewBloco({ titulo: '', descricao: '', duracao_estimada: '', tipo: 'comum' });
+        } catch (error: any) {
+            console.error("Erro ao salvar bloco:", error);
+            alert("Erro ao salvar bloco: " + (error.message || "Tente novamente."));
+        }
     };
 
     const handleUpdateStatus = async (id: string, status: string) => {
